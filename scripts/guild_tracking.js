@@ -42,45 +42,53 @@ module.exports = {
 
             //AFTER A UPDATE OF COUNT, RECALCULATE CURRENT SERVER RANKING 
 
-            this.calculate_rankings(message.guild.id,db)
+            // this.calculate_rankings(message.guild.id,db)
 
         }
     },
     async calculate_rankings(guild,db) { //CALCULATES RANKINGS FOR SPECIFIED GUILD
 
-        const guildId = guild
-        const lastWeek = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000); // last 7 days
+        return new Promise(async (resolve,reject) => {
+            try {
+                
+                const guildId = guild
+                const lastWeek = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000); // last 7 days
 
-        const avgQuery = `
-            SELECT user_id, SUM(message_count) as total_count
-            FROM y_guild_users_daily_stats
-            WHERE guild_id = ?
-            AND day >= ?
-            GROUP BY user_id
-            ORDER BY total_count DESC
-        `;
+                const avgQuery = `
+                    SELECT user_id, SUM(message_count) as total_count
+                    FROM y_guild_users_daily_stats
+                    WHERE guild_id = ?
+                    AND day >= ?
+                    GROUP BY user_id
+                    ORDER BY total_count DESC
+                `;
 
-        const avgParams = [guildId, lastWeek.toISOString().split('T')[0]];
-        const avgResult = await dbquery(avgQuery, avgParams, db);
+                const avgParams = [guildId, lastWeek.toISOString().split('T')[0]];
+                const avgResult = await dbquery(avgQuery, avgParams, db);
 
-        let ranks = [];
+                let ranks = [];
 
-        // Assign ranks based on weekly average message count
-        avgResult.forEach((row, index) => {
-            const rank = index + 1;
-            const userId = row.user_id;
-            const messageCount = row.total_count / 7; // average message count per day
+                // Assign ranks based on weekly average message count
+                avgResult.forEach((row, index) => {
+                    const rank = index + 1;
+                    const userId = row.user_id;
+                    const messageCount = row.total_count / 7; // average message count per day
 
-            // Store rank in memory for later use
+                    ranks.push({
+                        userID : userId,
+                        rank: rank,
+                        average: messageCount
+                    })
+                });
 
-            ranks.push({
-                userID : userId,
-                rank: rank,
-                average: messageCount
-            })
-        });
+                resolve(ranks)
 
-        return ranks
+            } catch (error) {
+                if(error) {
+                    reject('err')
+                }
+            }
+        })
 
         // {
         //     userID: '491588970136862720',
@@ -88,6 +96,25 @@ module.exports = {
         //     average: 0.5714285714285714
         // }
 
+    },
+    getInactiveUsers(guildId, db) {
+        return new Promise(async (resolve, reject) => {
+          try {
+            const lastWeek = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000); // last 7 days
+            const inactiveQuery = `
+              SELECT DISTINCT user_id
+              FROM y_guild_users_daily_stats
+              WHERE guild_id = ?
+              AND day < ?
+            `;
+            const inactiveParams = [guildId, lastWeek.toISOString().split('T')[0]];
+            const inactiveResult = await dbquery(inactiveQuery, inactiveParams, db);
+            const inactiveUsers = inactiveResult.map(row => row.user_id);
+            resolve(inactiveUsers);
+          } catch (error) {
+            reject([]);
+          }
+        });
     },
     voicechat(userId,guildId,client) {
 
@@ -103,7 +130,7 @@ module.exports = {
             const interval = setInterval(() => {
                 timeElapsed += 1
     
-                console.log
+                // console.log
     
               if(!member.voice.channel) {
 
@@ -143,10 +170,94 @@ module.exports = {
             let params = [date,time,guild_id,user_id]
             await dbquery(create_row_query,params,db)
         }
-    }
+    },
+    async rankUpdates(db,client) {
+
+        console.log('Rank Updates')
+
+        let get_guild_list = 'SELECT * FROM y_guild_track_users'
+        let guild_list = await dbquery(get_guild_list,undefined,db)
+
+        for (const guild_ of guild_list) {
+
+            const guild = client.guilds.cache.get(guild_.guild_id);
+            if(!guild) continue
+
+
+            let ranks = await this.calculate_rankings(guild.id,db)      //
+            // ranks                                                    // 
+            // [                                                        //
+            //     {                                                    //
+            //       userID: '423943556927848449',                      //
+            //       rank: 1,                                           //
+            //       average: 16.142857142857142                        //
+            //     },                                                   //
+            //     {                                                    //
+            //       userID: '491588970136862720',                      //
+            //       rank: 2,                                           //
+            //       average: 0.7142857142857143                        //
+            //     }                                                    //
+            //   ]                                                      //
+
+            let guild_roles_query = 'SELECT * FROM y_guild_user_ranks WHERE guild_id = ?'
+            let parameters = [guild.id]
+            let guild_rank_roles = await dbquery(guild_roles_query , parameters , db)
+
+            // console.log(guild_rank_roles)
+
+            // RowDataPacket {
+            //     id: 1,
+            //     role_id: '724291690923425864',
+            //     guild_id: '709287804898902076',
+            //     rank: 1
+            //   }
+
+            ranks.forEach(async (rank) => {
+
+                const role = guild_rank_roles.find(r => r.rank === rank.rank);
+                if (role) {
+
+                    const member = await guild.members.fetch(rank.userID);
+                    if (!member) return 
+
+                    const role_to_add = guild.roles.cache.get(role.role_id);
+                    if (!role_to_add) return 
+
+                    // console.log(role_to_add.id)
+
+                    guild_rank_roles.forEach(role => {
+                        if (member.roles.cache.has(role.role_id) && role.role_id != role_to_add.id) {
+                            member.roles.remove(role.role_id)
+                                .catch(error => console.log(`Failed to remove role ${role.role_id} from user ${member.id} in guild ${guild.id}: ${error.message}`));
+                        }
+                    })
+
+                    await member.roles.add(role_to_add)
+                    .catch(error => console.log(`Failed to add role ${role.role_id} to user ${member.id} in guild ${guild.id}: ${error.message}`));
+
+
+                    // console.log(role.role_id);
+                } 
+            })
+
+            let inactive_check = await this.getInactiveUsers(guild_.guild_id,db)
+            inactive_check.forEach( async (id) => {
+                const member = await guild.members.fetch(id);
+                if (!member) return
+
+                guild_rank_roles.forEach(role => {
+                    if (member.roles.cache.has(role.role_id)) {
+                        member.roles.remove(role.role_id)
+                    }
+                })
+            })
+        }
+        
+        // console.log(guild_list)
+    },
 }
 
-function dbquery(prompt,variables,db) {
+function dbquery(prompt,variables = [],db) {
     return new Promise((resolve,reject) => {
         db.query(prompt,variables, function (err,rows){
            if(err) reject(err)

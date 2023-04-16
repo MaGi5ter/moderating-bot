@@ -17,7 +17,7 @@ module.exports = {
     async copy_images(message,db,client,target) {
 
         let Attachments = Array.from(message.attachments.values())
-        console.log(Attachments.length)
+        // console.log(Attachments.length)
 
         let links = []
 

@@ -44,6 +44,8 @@ client.on("messageCreate", async (message) => {
     if(message.content.startsWith(prefix) || message.author.bot || message.webhookId) return
     //TRACKING
 
+    // console.log(message.content)
+
     let check_if = `
         SELECT 'track_user' AS id FROM y_guild_track_users WHERE guild_id = ?
         UNION ALL
@@ -54,7 +56,7 @@ client.on("messageCreate", async (message) => {
 
     if(!check_result[0]) return
 
-    console.log(check_result)
+    // console.log(check_result)
 
     try {
         if(check_result[0].id == 'track_user' ) { //IF SERVER EXISTS IN DB THAT MEANS IT IS TRACKED
@@ -98,6 +100,13 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
 /////////////////////////////////////////////////////////////////////////////////////////////////////
 
 client.login(token);
+
+//ACTIVITIES THAT NEED TO BE DONE ONCE A WHILE 
+
+setInterval(() => {
+    const guild_tracking = require('./scripts/guild_tracking')
+    guild_tracking.rankUpdates(db,client)
+}, 1000 * 60 * 60 * 3);
 
 function dbquery(prompt,variables,db) {
     return new Promise((resolve,reject) => {
