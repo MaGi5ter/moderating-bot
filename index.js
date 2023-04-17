@@ -89,8 +89,8 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
             const userId = oldState.member.id; 
             const guildId = oldState.guild.id; 
         
-            const voiceTime = await guild_tracking.voicechat(userId, guildId,client);
-            guild_tracking.update_voice(userId,guildId,db,voiceTime)
+            const voiceTime = await guild_tracking.voicechat(userId, guildId,client,db);
+            // guild_tracking.update_voice(userId,guildId,db,voiceTime)
         
             console.log(`${userId} has spent ${voiceTime} seconds in voice chat`);
         }
@@ -106,7 +106,7 @@ client.login(token);
 setInterval(() => {
     const guild_tracking = require('./scripts/guild_tracking')
     guild_tracking.rankUpdates(db,client)
-}, 1000 * 60 * 60 * 3);
+}, 1000 * 60 * 60 * 1);
 
 function dbquery(prompt,variables,db) {
     return new Promise((resolve,reject) => {

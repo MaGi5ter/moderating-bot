@@ -36,14 +36,12 @@ module.exports = {
                     // console.log(member)
                     if (member) {
                         embed.addFields(
-                            { name: `#${rank.rank} ${member.username}`, value: `score: ${rank.average.toFixed(2)}` },
+                            { name: `#${rank.rank} ${member.username}`, value: `score: ${rank.score.toFixed(2)}` },
                         )
-                        // embed.addFields({ value:`#${rank.rank} ${member.user.tag}`, `Average messages per day: ${rank.average.toFixed(2)}`});
                     }  else {
                         embed.addFields(
-                            { name : `#${rank.rank} Unknown User (ID: ${rank.userID})` , value :` score: ${rank.average.toFixed(2)}`}
+                            { name : `#${rank.rank} Unknown User (ID: ${rank.userID})` , value :` score: ${rank.score.toFixed(2)}`}
                         )
-                        //  embed.addField(`#${rank.rank} Unknown User (ID: ${rank.userID})`, `Average messages per day: ${rank.average.toFixed(2)}`);
                     }
                     });
 
