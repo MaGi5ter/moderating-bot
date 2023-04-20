@@ -80,20 +80,28 @@ module.exports = {
                     let score = 
                     (
                         (
-                            Number(avgMSG) + (Number(avgVC)*0.5)
-                        )/2
-                    ) * (
-                            Number(actDAY) / 1.3
-                        )
+                            (
+                                Number(avgMSG) + (Number(avgVC)*0.6)
+                            )/2
+                        ) * (
+                                Number(actDAY) * 0.5
+                            ) 
+                    ) / 4
 
+                    // console.log([actDAY,avgMSG,avgVC,score])
 
                     users_scores.push({
                         userID : user.user_id,
-                        score: score
+                        score: score,
+                        active_days: actDAY,
+                        average_msg: avgMSG,
+                        average_voice: avgVC
                     })
 
 
                 })
+
+                // console.log(users_scores)
 
                 const ranked_users = users_scores.sort((a, b) => b.score - a.score).map((user, index) => {
                     return {
@@ -103,6 +111,7 @@ module.exports = {
                     };
                 });
 
+                console.log(ranked_users)
                 resolve(ranked_users)
 
             } catch (error) {
@@ -140,11 +149,14 @@ module.exports = {
             const member = guild.members.cache.get(userId);
           
             if (!member.voice.channel) return;
+
+            const voiceChannel = member.voice.channel.id
           
             let timeElapsed = 0
             let timeTotal = 0
           
             const interval = setInterval(() => {
+                
                 if(!member.voice.mute) {
                     timeElapsed  +=  1
                     timeTotal    +=  1
@@ -156,7 +168,7 @@ module.exports = {
                     }
                 }
     
-                if(!member.voice.channel) {
+                if(!member.voice.channel || member.voice.channel.id != voiceChannel ) {
 
                     // console.log(timeElapsed)
 
@@ -201,7 +213,7 @@ module.exports = {
     },
     async rankUpdates(db,client) {
 
-        console.log('Rank Updates')
+        console.log('GLOBAL RANK UPDATES')
 
         let get_guild_list = 'SELECT * FROM y_guild_track_users'
         let guild_list = await dbquery(get_guild_list,undefined,db)
@@ -218,33 +230,43 @@ module.exports = {
             let parameters = [guild.id]
             let guild_rank_roles = await dbquery(guild_roles_query , parameters , db)
 
-            ranks.forEach(async (rank) => {
+            for (const rank of ranks) {
 
-                const role = guild_rank_roles.find(r => r.rank === rank.rank);
+                const role = await guild_rank_roles.find(r => r.rank === rank.rank);
                 if (role) {
+                    const member = await guild.members.fetch(rank.userID);
+                    if (!member) {
+                        continue;
+                    }
+                    const role_to_add = await guild.roles.cache.get(role.role_id); 
+                    if (!role_to_add.id) {
+                        continue
+                    }
+            
+                    for (const role of guild_rank_roles) {
+                        if (member.roles.cache.has(role.role_id) && role.role_id != role_to_add.id) {
+                            await member.roles.remove(role.role_id)
+                                .catch(error => console.log(`Failed to remove role ${role.role_id} from user ${member.id} in guild ${guild.id}: ${error.message}`));
+                        }
+                    }
+            
+                    await member.roles.add(role_to_add)
+                        .catch(error => console.log(`Failed to add role ${role.role_id} to user ${member.id} in guild ${guild.id}: ${error.message}`));
+                } else {  // IF USER IS UNDER THE REWARD RANKS REMOVE ALL RANKS IF HE OWNS SOME
 
                     const member = await guild.members.fetch(rank.userID);
-                    if (!member) return 
+                    if (!member) {
+                        continue;
+                    }
 
-                    const role_to_add = guild.roles.cache.get(role.role_id);
-                    if (!role_to_add) return 
-
-                    // console.log(role_to_add.id)
-
-                    guild_rank_roles.forEach(role => {
-                        if (member.roles.cache.has(role.role_id) && role.role_id != role_to_add.id) {
-                            member.roles.remove(role.role_id)
+                    guild_rank_roles.forEach(async guild => {
+                        if (member.roles.cache.has(guild.role_id)) {
+                            await member.roles.remove(guild.role_id)
                                 .catch(error => console.log(`Failed to remove role ${role.role_id} from user ${member.id} in guild ${guild.id}: ${error.message}`));
                         }
                     })
-
-                    await member.roles.add(role_to_add)
-                    .catch(error => console.log(`Failed to add role ${role.role_id} to user ${member.id} in guild ${guild.id}: ${error.message}`));
-
-
-                    // console.log(role.role_id);
-                } 
-            })
+                }
+            }
 
             let inactive_check = await this.getInactiveUsers(guild_.guild_id,db)
             inactive_check.forEach( async (id) => {
@@ -258,8 +280,6 @@ module.exports = {
                 })
             })
         }
-        
-        // console.log(guild_list)
     },
 }
 

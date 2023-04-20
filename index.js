@@ -1,4 +1,4 @@
-const { Client, Events, GatewayIntentBits } = require('discord.js');
+const { Client, Events, GatewayIntentBits,PermissionsBitField } = require('discord.js');
 const { ownerID,prefix ,token } = require('./config.json');
 const fs = require('fs');
 const db = require('./mysql')
@@ -28,8 +28,21 @@ client.once(Events.ClientReady, c => {
 client.on("messageCreate", async (message) => {
     if( message.author.bot || !message.content.startsWith(prefix) || message.webhookId) return
 
+    let channelID = message.channel.id
+            
+    let check_query = 'SELECT * FROM y_excluded_channels WHERE channel_id = ?'
+    let params = [channelID]
+
+    let check = await dbquery(check_query,params,db)
+
+    if(check.length > 0 && !message.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
+        message.delete()
+        message.author.send('Using commands on this channel is disabled')
+        return
+    }
+
     const args = message.content.slice(prefix.length).trim().split(/ +/);
-	const command = args.shift().toLowerCase();
+    const command = args.shift().toLowerCase();
 
     const commandID = commands.findIndex(element => element.name == command)
     if(commandID == -1) {return}
@@ -43,8 +56,6 @@ client.on("messageCreate", async (message) => {
 
     if(message.content.startsWith(prefix) || message.author.bot || message.webhookId) return
     //TRACKING
-
-    // console.log(message.content)
 
     let check_if = `
         SELECT 'track_user' AS id FROM y_guild_track_users WHERE guild_id = ?
@@ -84,6 +95,9 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
 
     if(check.length > 0) { //IF SERVER EXISTS IN DB THAT MEANS IT IS TRACKED
         if (oldState.channelId !== newState.channelId) {
+
+            // console.log('nowy state')
+
             const guild_tracking = require('./scripts/guild_tracking')
 
             const userId = oldState.member.id; 
