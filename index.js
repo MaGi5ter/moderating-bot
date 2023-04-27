@@ -18,11 +18,36 @@ const client = new Client({ intents: [
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent,
     GatewayIntentBits.DirectMessages,
-    GatewayIntentBits.GuildVoiceStates
+    GatewayIntentBits.GuildVoiceStates,
+    GatewayIntentBits.GuildMembers
 ] });
 
-client.once(Events.ClientReady, c => {
+client.once(Events.ClientReady, async c => {
 	console.log(`Ready! Logged in as ${c.user.tag}`);
+
+    //here check if any user is in voice chat to calculate his time spent, after restart of the bot
+
+    let get_guild_list = 'SELECT * FROM y_guild_track_users'
+    let guild_list = await dbquery(get_guild_list, undefined, db)
+
+    for (const guild of guild_list) {
+        const guild_fetched = await client.guilds.fetch(guild.guild_id).catch(error => {
+            //IF THERE IS ERROR IT MOSTLY IS THAT BOT IS NO LONGER IN THAT GUILD
+        }) 
+
+        if(!guild_fetched) continue
+
+        const voiceStates = guild_fetched.voiceStates.cache.values();
+
+        for (const voiceState of voiceStates) {
+
+            let user = voiceState.id
+            let guild = guild_fetched.id
+
+            const guild_tracking = require('./scripts/guild_tracking')
+            guild_tracking.voicechat(user, guild,client,db);
+        }
+    }
 });
 
 client.on("messageCreate", async (message) => {
@@ -116,11 +141,11 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
 client.login(token);
 
 //ACTIVITIES THAT NEED TO BE DONE ONCE A WHILE 
-
+const guild_tracking = require('./scripts/guild_tracking')
+guild_tracking.rankUpdates(db,client)
 setInterval(() => {
-    const guild_tracking = require('./scripts/guild_tracking')
     guild_tracking.rankUpdates(db,client)
-}, 1000 * 60 * 60 * 1);
+}, 1000 * 60 * 60 * 2);
 
 function dbquery(prompt,variables,db) {
     return new Promise((resolve,reject) => {

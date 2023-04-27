@@ -2,7 +2,7 @@ const {ActionRowBuilder , ButtonBuilder ,ButtonStyle , ComponentType, EmbedBuild
 
 module.exports = {
 	name: 'ranking',
-	description: 'displays server top10 users',
+	description: 'displays server users',
 	type: 'public',
 	async execute(message, args,commands,db,client) {
 		    
