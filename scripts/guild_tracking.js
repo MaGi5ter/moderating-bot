@@ -125,14 +125,20 @@ module.exports = {
     getInactiveUsers(guildId, db) {
         return new Promise(async (resolve, reject) => {
           try {
-            const lastWeek = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000); // last 7 days
+
             const inactiveQuery = `
-              SELECT DISTINCT user_id
-              FROM y_guild_users_daily_stats
-              WHERE guild_id = ?
-              AND day < ?
-            `;
-            const inactiveParams = [guildId, lastWeek.toISOString().split('T')[0]];
+                SELECT DISTINCT user_id
+                FROM y_guild_users_daily_stats
+                WHERE guild_id = ?
+                AND user_id NOT IN (
+                    SELECT user_id
+                    FROM y_guild_users_daily_stats
+                    WHERE guild_id = ?
+                    AND day >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+                )
+                `;
+            const inactiveParams = [guildId, guildId];
+
             const inactiveResult = await dbquery(inactiveQuery, inactiveParams, db);
             const inactiveUsers = inactiveResult.map(row => row.user_id);
             resolve(inactiveUsers);
@@ -216,11 +222,15 @@ module.exports = {
         console.log('GLOBAL RANK UPDATES')
 
         let get_guild_list = 'SELECT * FROM y_guild_track_users'
-        let guild_list = await dbquery(get_guild_list,undefined,db)
+        let guild_list = await dbquery(get_guild_list, undefined, db)
 
         for (const guild_ of guild_list) {
 
-            const guild = client.guilds.cache.get(guild_.guild_id);
+            // console.log(guild_)
+
+            const guild = await client.guilds.fetch(guild_.guild_id).catch(error => {
+                
+            })
             if(!guild) continue
 
 
@@ -231,29 +241,37 @@ module.exports = {
             let guild_rank_roles = await dbquery(guild_roles_query , parameters , db)
 
             for (const rank of ranks) {
-
                 const role = await guild_rank_roles.find(r => r.rank === rank.rank);
                 if (role) {
-                    const member = await guild.members.fetch(rank.userID);
+                    const member = await guild.members.fetch({user:rank.userID , force:true});
                     if (!member) {
                         continue;
                     }
-                    const role_to_add = await guild.roles.cache.get(role.role_id); 
+                    const role_to_add = await member.guild.roles.cache.get(role.role_id); 
+
                     if (!role_to_add.id) {
                         continue
                     }
             
                     for (const role of guild_rank_roles) {
-                        if (member.roles.cache.has(role.role_id) && role.role_id != role_to_add.id) {
-                            await member.roles.remove(role.role_id)
-                                .catch(error => console.log(`Failed to remove role ${role.role_id} from user ${member.id} in guild ${guild.id}: ${error.message}`));
+                        if (member._roles.includes(role.role_id) && role.role_id != role_to_add.id) {
+
+                            if(role.role_id == role_to_add.id) {
+                                // console.log('user miał dostac role ktora posiada')
+                            } else {
+
+                                await member.roles.remove(role.role_id)
+                                    .catch(error => console.log(`Failed to remove role ${role.role_id} from user ${member.id} in guild ${guild.id}: ${error.message}`))
+                                console.log('usuneło ')
+
+                            }
+                            // console.log(await member.roles.remove(role.role_id),'role remove')
                         }
                     }
-            
-                    await member.roles.add(role_to_add)
-                        .catch(error => console.log(`Failed to add role ${role.role_id} to user ${member.id} in guild ${guild.id}: ${error.message}`));
-                } else {  // IF USER IS UNDER THE REWARD RANKS REMOVE ALL RANKS IF HE OWNS SOME
 
+                    member.roles.add(role_to_add)
+
+                } else {  // IF USER IS UNDER THE REWARD RANKS REMOVE ALL RANKS IF HE OWNS SOME
                     const member = await guild.members.fetch(rank.userID);
                     if (!member) {
                         continue;
@@ -269,6 +287,9 @@ module.exports = {
             }
 
             let inactive_check = await this.getInactiveUsers(guild_.guild_id,db)
+
+            console.log('INACTIVE',inactive_check)
+
             inactive_check.forEach( async (id) => {
                 const member = await guild.members.fetch(id);
                 if (!member) return
