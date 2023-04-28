@@ -233,8 +233,39 @@ module.exports = {
             })
             if(!guild) continue
 
-
             let ranks = await this.calculate_rankings(guild.id,db)
+
+            //BELOW UPDATING ROLES BASED IF USER IS IN RANK LIST
+
+            let query = `SELECT * FROM y_guild_activity_rank WHERE guildID = ?`
+            let params = [guild.id]
+
+            let role_for_active_users = await dbquery(query ,params, db)
+
+            if(role_for_active_users.length > 0) {
+
+                for (const user of ranks) {
+                    
+                    const member = await guild.members.fetch({user:user.userID , force:true});
+                    if (!member) {
+                        continue;
+                    }
+
+                    const role_ = await member.guild.roles.cache.get(role_for_active_users[0].roleID);
+                    if (!role_.id) {
+                        continue
+                    } 
+
+                    if(member._roles.includes(role_for_active_users[0].roleID)) continue
+
+                    member.roles.add(role_).catch(err => {
+                       if(err) return
+                    })
+
+                }
+            }
+
+            //BELOW UPDATING ROLES BASED ON GUILD RANKING
 
             let guild_roles_query = 'SELECT * FROM y_guild_user_ranks WHERE guild_id = ?'
             let parameters = [guild.id]
@@ -262,7 +293,7 @@ module.exports = {
 
                                 await member.roles.remove(role.role_id)
                                     .catch(error => console.log(`Failed to remove role ${role.role_id} from user ${member.id} in guild ${guild.id}: ${error.message}`))
-                                console.log('usuneło ')
+                                // console.log('usuneło ')
 
                             }
                             // console.log(await member.roles.remove(role.role_id),'role remove')
@@ -293,6 +324,8 @@ module.exports = {
             inactive_check.forEach( async (id) => {
                 const member = await guild.members.fetch(id);
                 if (!member) return
+
+                if(member.roles.cache.has(role_for_active_users[0].roleID)) member.roles.remove(role_for_active_users[0].roleID)
 
                 guild_rank_roles.forEach(role => {
                     if (member.roles.cache.has(role.role_id)) {
