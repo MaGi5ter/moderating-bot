@@ -155,6 +155,7 @@ module.exports = {
             const member = guild.members.cache.get(userId);
           
             if (!member.voice.channel) return;
+            if (member.user.bot) return
 
             const voiceChannel = member.voice.channel.id
           
