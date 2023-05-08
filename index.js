@@ -2,6 +2,7 @@ const { Client, Events, GatewayIntentBits,PermissionsBitField } = require('disco
 const { ownerID,prefix ,token } = require('./config.json');
 const fs = require('fs');
 const db = require('./mysql')
+const score = require('./scripts/score')
 
 let commands = []
 
@@ -98,6 +99,11 @@ client.on("messageCreate", async (message) => {
         if(check_result[0].id == 'track_user' ) { //IF SERVER EXISTS IN DB THAT MEANS IT IS TRACKED
             const guild_tracking = require('./scripts/guild_tracking')
             guild_tracking.message(message,db,client)
+
+            let scoreTotal = await score.message(message,db)
+            // console.log(scoreTotal)
+
+            if(scoreTotal > 0 ) score.save(db ,message.guild.id, message.author.id , scoreTotal , 'message score')
         }
     
         if(check_result[0].id == 'copy_channel' || check_result[1].id == 'copy_channel') {
@@ -135,6 +141,24 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
         }
     }
 });
+
+client.on('messageDelete', async (message) => { //USERS WERE ABUSING COUNTER BY SENDIND AND DELETING MESSAGES SO I'VE MADE THIS
+
+    let check_if_guild_tracked = `SELECT * FROM y_guild_track_users WHERE guild_id = ?`
+    let check_params = [message.guildId]
+    let check = await dbquery(check_if_guild_tracked,check_params,db)
+
+    if(check.length > 0) { //IF SERVER EXISTS IN DB THAT MEANS IT IS TRACKED
+        let messageCreated = message.createdTimestamp
+        let userID = message.author.id
+        let  guildID = message.guildId
+        let messageDate =  new Date(messageCreated).toISOString().slice(0, 10);
+        console.log(userID ,messageDate)   
+
+        let guild_tracking = require('./scripts/guild_tracking')
+        guild_tracking.removeMessageActivity(db , guildID , userID , messageDate)
+    }
+})
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////
 

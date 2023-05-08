@@ -149,6 +149,8 @@ module.exports = {
     },
     voicechat(userId,guildId,client,db) {
 
+        let vcMultiplierScore = 0.00233
+
         //function counts how many time user spend in voicechannel, returns time in seconds
         return new Promise((resolve,reject) => {
             const guild = client.guilds.cache.get(guildId);
@@ -161,23 +163,32 @@ module.exports = {
           
             let timeElapsed = 0
             let timeTotal = 0
+            let timeScored = 0
           
             const interval = setInterval(() => {
                 
-                if(!member.voice.mute) {
-                    timeElapsed  +=  1
-                    timeTotal    +=  1
+                timeElapsed  +=  1
+                timeTotal    +=  1
+                timeScored   +=  1
 
-                    if(timeElapsed == 30) {
-                        this.update_voice(userId,guildId,db,30)
-                        timeElapsed = 0
-                        // console.log(timeElapsed)
-                    }
+                if(timeElapsed == 30) {
+                    this.update_voice(userId,guildId,db,30)
+                    timeElapsed = 0
+                    // console.log(timeElapsed)
+                }
+
+                if(!member.voice.mute && timeScored == 360) {
+                    //0.07
+
+                    let score = require('./score')
+                    score.save(db, member.guild.id , member.user.id, ( vcMultiplierScore * timeScored ) , 'voicechat score')
+                    timeScored = 0
                 }
     
                 if(!member.voice.channel || member.voice.channel.id != voiceChannel ) {
 
-                    // console.log(timeElapsed)
+                    let score = require('./score')
+                    score.save(db, member.guild.id , member.user.id, ( vcMultiplierScore * timeScored ) , 'voicechat score')
 
                     this.update_voice(userId,guildId,db,timeElapsed)
 
@@ -230,11 +241,14 @@ module.exports = {
             // console.log(guild_)
 
             const guild = await client.guilds.fetch(guild_.guild_id).catch(error => {
-                
+
             })
             if(!guild) continue
 
-            let ranks = await this.calculate_rankings(guild.id,db)
+            let scoreScript = require('./score')
+            let ranks = await scoreScript.top_score(guild.id,db)
+
+            console.log(ranks)
 
             //BELOW UPDATING ROLES BASED IF USER IS IN RANK LIST
 
@@ -293,7 +307,7 @@ module.exports = {
                             } else {
 
                                 await member.roles.remove(role.role_id)
-                                    .catch(error => console.log(`Failed to remove role ${role.role_id} from user ${member.id} in guild ${guild.id}: ${error.message}`))
+                                    .catch(error => console.log(`Failed to remove role ${role.role_id} from user ${member.id} in guild [${guild.id},${guild.name}]: ${error.message}`))
                                 // console.log('usuneło ')
 
                             }
@@ -302,6 +316,9 @@ module.exports = {
                     }
 
                     member.roles.add(role_to_add)
+                        .catch(error => {
+                            console.log(`Failed to add role ${role.role_id} to user ${member.id} in guild [${guild.id},${guild.name}]: ${error.message}`)
+                        })
 
                 } else {  // IF USER IS UNDER THE REWARD RANKS REMOVE ALL RANKS IF HE OWNS SOME
                     const member = await guild.members.fetch(rank.userID);
@@ -312,7 +329,7 @@ module.exports = {
                     guild_rank_roles.forEach(async guild => {
                         if (member.roles.cache.has(guild.role_id)) {
                             await member.roles.remove(guild.role_id)
-                                .catch(error => console.log(`Failed to remove role ${role.role_id} from user ${member.id} in guild ${guild.id}: ${error.message}`));
+                            .catch(error => console.log(`Failed to remove role ${role.role_id} from user ${member.id} in guild [${guild.id},${guild.name}]: ${error.message}`))
                         }
                     })
                 }
@@ -327,15 +344,50 @@ module.exports = {
                 if (!member) return
 
                 if(member.roles.cache.has(role_for_active_users[0].roleID)) member.roles.remove(role_for_active_users[0].roleID)
+                    .catch(error => console.log(`Failed to remove role ${role_for_active_users[0].roleID} from user [${member.id},${member.username}] in guild [${guild.id},${guild.name}]: ${error.message}`))
 
                 guild_rank_roles.forEach(role => {
                     if (member.roles.cache.has(role.role_id)) {
                         member.roles.remove(role.role_id)
+                            .catch(error => console.log(`Failed to remove role ${role.role_id} from user [${member.id},${member.username}] in guild [${guild.id},${guild.name}]: ${error.message}`))
                     }
                 })
             })
         }
     },
+    async removeMessageActivity(db,guildID,userID,day) {
+        try {
+                
+            //CHECK IF USER WAS TODAY RECORDED ON THIS SERVER
+
+            const date = new Date().toISOString().slice(0, 10);
+
+            let check_if_user_sent_msg = 'SELECT * FROM y_guild_users_daily_stats WHERE day = ? AND user_id = ? AND guild_id = ?'
+            let check_msg_params = [day  , userID  , guildID]
+            let check_msg = await dbquery(check_if_user_sent_msg , check_msg_params , db)
+
+            if(check_msg.length > 0) {
+
+                // If there is already a row in the database, increment the count
+                const count = check_msg[0].message_count - 1;
+
+                let update_count = 'UPDATE y_guild_users_daily_stats SET message_count = ? WHERE user_id = ? AND day = ? AND guild_id = ?'
+                let update_params = [count, userID , day , guildID]
+
+                await dbquery(update_count,update_params,db)
+
+            }
+
+        } catch (error) {
+            if(error) {
+                console.log(error)
+
+                let config = require('../config.json')
+                client.users.send(config.ownerID,`ERROR PRZY SLEDZIENIU WIADOMOSCI\n${error}`)
+            }
+        }
+
+    }
 }
 
 function dbquery(prompt,variables = [],db) {

@@ -1,8 +1,8 @@
 const {ActionRowBuilder , ButtonBuilder ,ButtonStyle , ComponentType, EmbedBuilder } = require('discord.js')
 
 module.exports = {
-	name: 'statrank',
-	description: 'displays server users',
+	name: 'top',
+	description: 'displays server top players based on their score from last week',
 	type: 'public',
 	async execute(message, args,commands,db,client) {
 		    
@@ -12,8 +12,10 @@ module.exports = {
         
         if(check.length > 0) {
 
-            let guild_tracking = require('../scripts/guild_tracking')
-            let rankings = await guild_tracking.calculate_rankings(message.guild.id,db)
+            let score = require('../scripts/score')
+            let rankings = await score.top_score(message.guild.id,db)
+
+            console.log(rankings)
 
             const PAGE_SIZE = 10; // number of rankings per page
             const pages = Math.ceil(rankings.length / PAGE_SIZE);
@@ -25,25 +27,17 @@ module.exports = {
                     const end = page * PAGE_SIZE;
                     const currentRankings = rankings.slice(start, end);
 
+                    // let description = "```\nTop users based on their score\n```\n  **1**. <@123>  `16.02`\n  **2**. <@123>  `12.02`\n  **3**. <@123>  `11.02`\n  **4**. <@123>  `8.02`"
+                    let description = "```\nTop users based on their score\n```"
+
+                    currentRankings.forEach(async (rank,index) => {
+                        description = description + `\n  **${index + 1}**. <@${rank.userID}>  ` + '`' + rank.score.toFixed(2) + '`'
+                    });
+
                     const embed = new EmbedBuilder()
                         .setTitle(`${message.guild.name}`)
-                        .setDescription(`Showing page ${page} of ${pages}`)
-                        .setColor(0x0099FF);
-
-                    currentRankings.forEach(async (rank) => {
-                    const member = await client.users.fetch(rank.userID);
-
-                    // console.log(member)
-                    if (member) {
-                        embed.addFields(
-                            { name: `#${rank.rank} ${member.username}`, value: `score: ${rank.score.toFixed(2)}` },
-                        )
-                    }  else {
-                        embed.addFields(
-                            { name : `#${rank.rank} Unknown User (ID: ${rank.userID})` , value :` score: ${rank.score.toFixed(2)}`}
-                        )
-                    }
-                    });
+                        .setDescription(description)
+                        .setColor("#9a54c0");
 
                     resolve(embed)
                 })
